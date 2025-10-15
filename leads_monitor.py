@@ -31,26 +31,55 @@ class LeadsMonitor:
         
         for i, row in enumerate(new_rows, 1):
             message += f"📋 Lead #{i}:\n"
+            message += "=" * 30 + "\n"
             
-            # Map common lead fields (adjust based on your sheet structure)
+            # Map actual columns from your Google Sheet
             field_mapping = {
-                0: "Name",
-                1: "Email", 
-                2: "Phone",
-                3: "Source",
-                4: "Message",
-                5: "Date",
-                6: "Status"
+                0: "📝 Form Type",
+                1: "📅 Submission Date", 
+                2: "👤 Name",
+                3: "📧 Email",
+                4: "📱 Phone",
+                5: "🌐 Platform",
+                6: "📢 Campaign Name",
+                7: "🎯 Adset Name",
+                8: "📺 Ad Name",
+                9: "💪 Underarm Concerns",
+                10: "👁️ Eye Area Concerns",
+                11: "⏰ Duration of Concern",
+                12: "📅 Preferred Appointment Time",
+                13: "📞 Contact Preference",
+                14: "📊 Status"
             }
             
-            for j, cell_value in enumerate(row):
-                field_name = field_mapping.get(j, f"Field {j+1}")
-                if cell_value and str(cell_value).strip():
-                    message += f"• {field_name}: {cell_value}\n"
+            # Display key information first
+            key_fields = [2, 3, 4, 1, 5, 14]  # Name, Email, Phone, Date, Platform, Status
             
-            message += "\n"
+            for j in key_fields:
+                if j < len(row) and row[j] and str(row[j]).strip():
+                    field_name = field_mapping.get(j, f"Field {j+1}")
+                    message += f"{field_name}: {row[j]}\n"
+            
+            message += "\n📋 Additional Details:\n"
+            message += "-" * 20 + "\n"
+            
+            # Display additional details
+            additional_fields = [0, 6, 7, 8, 9, 10, 11, 12, 13]
+            
+            for j in additional_fields:
+                if j < len(row) and row[j] and str(row[j]).strip():
+                    field_name = field_mapping.get(j, f"Field {j+1}")
+                    # Truncate very long fields
+                    value = str(row[j])
+                    if len(value) > 100:
+                        value = value[:97] + "..."
+                    message += f"{field_name}: {value}\n"
+            
+            message += "\n" + "=" * 40 + "\n\n"
         
-        message += f"📊 Total rows in sheet: {self.last_row_count}"
+        message += f"📊 Total leads in sheet: {self.last_row_count}\n"
+        message += f"⏰ Checked at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        
         return message
     
     async def check_for_new_leads(self):
