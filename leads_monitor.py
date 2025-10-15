@@ -82,6 +82,63 @@ class LeadsMonitor:
         
         return message
     
+    def format_single_lead_notification(self, row, lead_number):
+        """Format notification for a single lead"""
+        if not row:
+            return ""
+        
+        message = f"🆕 New Lead #{lead_number} Added to {GOOGLE_SHEET_TAB.title()} Sheet!\n\n"
+        message += "📋 Lead Details:\n"
+        message += "=" * 30 + "\n"
+        
+        # Map actual columns from your Google Sheet
+        field_mapping = {
+            0: "📝 Form Type",
+            1: "📅 Submission Date", 
+            2: "👤 Name",
+            3: "📧 Email",
+            4: "📱 Phone",
+            5: "🌐 Platform",
+            6: "📢 Campaign Name",
+            7: "🎯 Adset Name",
+            8: "📺 Ad Name",
+            9: "💪 Underarm Concerns",
+            10: "👁️ Eye Area Concerns",
+            11: "⏰ Duration of Concern",
+            12: "📅 Preferred Appointment Time",
+            13: "📞 Contact Preference",
+            14: "📊 Status"
+        }
+        
+        # Display key information first
+        key_fields = [2, 3, 4, 1, 5, 14]  # Name, Email, Phone, Date, Platform, Status
+        
+        for j in key_fields:
+            if j < len(row) and row[j] and str(row[j]).strip():
+                field_name = field_mapping.get(j, f"Field {j+1}")
+                message += f"{field_name}: {row[j]}\n"
+        
+        message += "\n📋 Additional Details:\n"
+        message += "-" * 20 + "\n"
+        
+        # Display additional details
+        additional_fields = [0, 6, 7, 8, 9, 10, 11, 12, 13]
+        
+        for j in additional_fields:
+            if j < len(row) and row[j] and str(row[j]).strip():
+                field_name = field_mapping.get(j, f"Field {j+1}")
+                # Truncate very long fields
+                value = str(row[j])
+                if len(value) > 100:
+                    value = value[:97] + "..."
+                message += f"{field_name}: {value}\n"
+        
+        message += "\n" + "=" * 40 + "\n"
+        message += f"📊 Total leads in sheet: {self.last_row_count + lead_number}\n"
+        message += f"⏰ Received at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        
+        return message
+    
     async def check_for_new_leads(self):
         """Check for new leads and send notifications"""
         if not self.initialized:
@@ -101,15 +158,19 @@ class LeadsMonitor:
                 # Get only the new rows (skip header if exists)
                 new_rows = all_data[self.last_row_count:]
                 
-                # Format and send notification
-                notification = self.format_lead_notification(new_rows)
-                
-                if notification:
-                    success = await self.telegram_service.send_notifications_to_all(notification)
-                    if success:
-                        print("Notifications sent successfully!")
-                    else:
-                        print("Failed to send some notifications")
+                # Send individual notification for each new lead
+                for i, new_row in enumerate(new_rows, 1):
+                    notification = self.format_single_lead_notification(new_row, i)
+                    
+                    if notification:
+                        success = await self.telegram_service.send_notifications_to_all(notification)
+                        if success:
+                            print(f"Individual notification sent for lead {i}!")
+                        else:
+                            print(f"Failed to send notification for lead {i}")
+                        
+                        # Small delay between notifications to avoid spam
+                        await asyncio.sleep(1)
                 
                 # Update the row count
                 self.last_row_count = current_row_count
