@@ -169,12 +169,34 @@ class LeadsMonitor:
         self.telegram_service = TelegramService()
         self.last_row_count = 0
         self.initialized = False
+        self.processed_leads = set()  # Track processed leads to avoid duplicates
+    
+    def get_lead_id(self, row):
+        """Generate a unique ID for a lead based on name, email, and date"""
+        if len(row) < 4:
+            return None
+        
+        name = row[2] if len(row) > 2 else ""
+        email = row[3] if len(row) > 3 else ""
+        date = row[1] if len(row) > 1 else ""
+        
+        # Create a unique identifier
+        return f"{name}_{email}_{date}".strip()
     
     async def initialize(self):
         """Initialize the monitor by getting the current row count"""
         try:
             self.last_row_count = self.sheets_service.get_last_row_count(GOOGLE_SHEET_ID, GOOGLE_SHEET_TAB)
+            
+            # Load existing leads into processed set to avoid duplicate notifications
+            all_data = self.sheets_service.get_sheet_data(GOOGLE_SHEET_ID, GOOGLE_SHEET_TAB)
+            for row in all_data[1:]:  # Skip header row
+                lead_id = self.get_lead_id(row)
+                if lead_id:
+                    self.processed_leads.add(lead_id)
+            
             print(f"Initialized with {self.last_row_count} rows in sheet")
+            print(f"Loaded {len(self.processed_leads)} existing leads into memory")
             self.initialized = True
         except Exception as e:
             print(f"Error initializing monitor: {e}")
@@ -297,6 +319,27 @@ class LeadsMonitor:
         
         return message
     
+    def is_new_lead(self, row):
+        """Check if a lead is from October 16, 2025 onwards"""
+        if len(row) < 2:
+            return False
+        
+        try:
+            # Get the submission date (column 1)
+            submission_date_str = row[1]
+            
+            # Parse the date (format: "October 16 2025 14:00:15")
+            from datetime import datetime
+            submission_date = datetime.strptime(submission_date_str, "%B %d %Y %H:%M:%S")
+            
+            # Check if it's from October 16, 2025 onwards
+            cutoff_date = datetime(2025, 10, 16, 0, 0, 0)
+            return submission_date >= cutoff_date
+            
+        except Exception as e:
+            print(f"Error parsing date '{row[1] if len(row) > 1 else 'N/A'}': {e}")
+            return False
+    
     async def check_for_new_leads(self):
         """Check for new leads and send notifications"""
         if not self.initialized:
@@ -316,19 +359,33 @@ class LeadsMonitor:
                 # Get only the new rows (skip header if exists)
                 new_rows = all_data[self.last_row_count:]
                 
-                # Send individual notification for each new lead
-                for i, new_row in enumerate(new_rows, 1):
-                    notification = self.format_single_lead_notification(new_row, i)
+                # Filter for new leads from October 16, 2025 onwards that haven't been processed
+                recent_leads = []
+                for row in new_rows:
+                    if self.is_new_lead(row):
+                        lead_id = self.get_lead_id(row)
+                        if lead_id and lead_id not in self.processed_leads:
+                            recent_leads.append(row)
+                            self.processed_leads.add(lead_id)  # Mark as processed
+                
+                if recent_leads:
+                    print(f"Found {len(recent_leads)} NEW leads from October 16, 2025 onwards!")
                     
-                    if notification:
-                        success = await self.telegram_service.send_notifications_to_all(notification)
-                        if success:
-                            print(f"Individual notification sent for lead {i}!")
-                        else:
-                            print(f"Failed to send notification for lead {i}")
+                    # Send individual notification for each recent lead
+                    for i, recent_lead in enumerate(recent_leads, 1):
+                        notification = self.format_single_lead_notification(recent_lead, i)
                         
-                        # Small delay between notifications to avoid spam
-                        await asyncio.sleep(1)
+                        if notification:
+                            success = await self.telegram_service.send_notifications_to_all(notification)
+                            if success:
+                                print(f"Individual notification sent for recent lead {i}!")
+                            else:
+                                print(f"Failed to send notification for recent lead {i}")
+                            
+                            # Small delay between notifications to avoid spam
+                            await asyncio.sleep(1)
+                else:
+                    print("No NEW leads from October 16, 2025 onwards found")
                 
                 # Update the row count
                 self.last_row_count = current_row_count
